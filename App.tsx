@@ -1,33 +1,31 @@
- 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text, Alert, ActivityIndicator, Platform, PermissionsAndroid, ToastAndroid, ImageBackground } from 'react-native';
-import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from 'react-native-vision-camera';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  PermissionsAndroid,
+} from 'react-native';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useFrameProcessor,
+} from 'react-native-vision-camera';
+import { runOnJS } from 'react-native-reanimated';
+import { scanFaces } from './FaceMap'; // Your face detection plugin
 
-export default function QRScanner({ navigation }) {
+export default function FaceCamera() {
   const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('back');
-  const [isScanning, setIsScanning] = useState(false);
- 
+  const device = useCameraDevice('front'); // or 'back'
+  const camera = useRef(null);
+  const [faces, setFaces] = useState([]);
+
   useEffect(() => {
     requestCameraPermission();
   }, []);
-   const codeScanner = useCodeScanner({
-    codeTypes: ['qr', 'ean-13'],
-    onCodeScanned: async (codes: any[]) => {
-      // connectToCharger()
-      if (isScanning) return; // prevent multiple scans
-       const scannedData = codes.map((code) => code?.value || code?.data).filter(Boolean);
-       if (scannedData[0]) {
-        setIsScanning(true); // stop scanning
-        // sendBootNotification()
-        // connectToCharger()
-        // await connectToCharger(scannedData[0]);
-      }
-    },
-  });
-  const ws = useRef(null);
- 
- 
+
   const requestCameraPermission = async () => {
     if (Platform.OS === 'android') {
       try {
@@ -35,7 +33,7 @@ export default function QRScanner({ navigation }) {
           PermissionsAndroid.PERMISSIONS.CAMERA,
           {
             title: 'Camera Permission',
-            message: 'App needs access to your camera to scan QR codes.',
+            message: 'App needs access to your camera to detect faces.',
             buttonNeutral: 'Ask Me Later',
             buttonNegative: 'Cancel',
             buttonPositive: 'OK',
@@ -47,75 +45,67 @@ export default function QRScanner({ navigation }) {
         return false;
       }
     } else {
-      return true;
+      await requestPermission();
     }
   };
- 
- 
- 
- 
+
+  const frameProcessor = useFrameProcessor((frame) => {
+    'worklet';
+    scanFaces(frame).then((detectedFaces) => {
+      console.log(detectedFaces, 'detectedFaces')
+      runOnJS(setFaces)(detectedFaces);
+    });
+  }, []);
+
   if (!device || !hasPermission) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" color="#00f" />
         <Text style={styles.loadingText}>Loading Camera...</Text>
       </View>
     );
   }
- 
-  // if (isScanning) {
-  //   return (
-  //     <ImageBackground
-  //     source={imageIndex.connection}
- 
-  //     resizeMode='contain'
-  //     style={styles.loadingContainer}>
- 
-       
-  //     </ImageBackground>
-  //   );
-  // }
- 
- 
- 
- 
- 
+
   return (
     <View style={styles.container}>
       <Camera
+        ref={camera}
         style={StyleSheet.absoluteFillObject}
         device={device}
-        isActive={!isScanning}
-        codeScanner={codeScanner}
+        isActive={true}
+        frameProcessor={frameProcessor}
+        frameProcessorFps={5}
       />
-      <Text style={styles.overlayText}>Point the camera at a QR Code</Text>
+      <View style={styles.faceCountContainer}>
+        <Text style={styles.faceText}>{`Faces detected: ${faces.length}`}</Text>
+      </View>
     </View>
   );
 }
- 
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor:'#16975f'
+    backgroundColor: '#16975f',
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
     color: '#000',
   },
-  overlayText: {
+  faceCountContainer: {
     position: 'absolute',
-    bottom: 40,
-    alignSelf: 'center',
-    color: '#fff',
-    fontSize: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    bottom: 50,
+    left: 20,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     padding: 10,
     borderRadius: 8,
+  },
+  faceText: {
+    color: '#fff',
+    fontSize: 18,
   },
 });
